@@ -25,38 +25,67 @@ st.set_page_config(page_title="FlowMatch-Compress Engine", layout="wide", page_i
 
 st.markdown("""
 <style>
-    /* Metric Card Styling */
+    /* Ensure all column metric containers stretch equally */
+    div[data-testid="column"] {
+        display: flex !important;
+        flex-direction: column !important;
+    }
+    
+    /* Uniform Metric Card Sizing */
     div[data-testid="stMetric"] {
         background-color: #f8fafc !important;
         border: 1px solid #e2e8f0 !important;
-        padding: 14px 18px !important;
+        padding: 16px 18px !important;
         border-radius: 12px !important;
         border-left: 5px solid #0284c7 !important;
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04) !important;
+        min-height: 125px !important;
+        height: 125px !important;
+        max-height: 125px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-between !important;
+        box-sizing: border-box !important;
+        width: 100% !important;
     }
     
-    /* Metric Label */
-    div[data-testid="stMetric"] label,
-    div[data-testid="stMetric"] [data-testid="stMetricLabel"],
+    /* Uniform Metric Label */
+    div[data-testid="stMetric"] [data-testid="stMetricLabel"] {
+        height: 24px !important;
+        overflow: hidden !important;
+    }
     div[data-testid="stMetric"] [data-testid="stMetricLabel"] * {
         color: #475569 !important;
-        font-size: 0.90rem !important;
+        font-size: 0.88rem !important;
         font-weight: 600 !important;
+        white-space: nowrap !important;
+        text-overflow: ellipsis !important;
+        line-height: 1.2 !important;
     }
     
-    /* Metric Value */
-    div[data-testid="stMetric"] [data-testid="stMetricValue"],
+    /* Uniform Metric Value */
+    div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+        height: 38px !important;
+        display: flex !important;
+        align-items: center !important;
+    }
     div[data-testid="stMetric"] [data-testid="stMetricValue"] * {
         color: #0f172a !important;
-        font-size: 1.85rem !important;
+        font-size: 1.75rem !important;
         font-weight: 700 !important;
+        line-height: 1.1 !important;
     }
     
-    /* Metric Delta */
-    div[data-testid="stMetric"] [data-testid="stMetricDelta"],
+    /* Uniform Metric Delta */
+    div[data-testid="stMetric"] [data-testid="stMetricDelta"] {
+        height: 22px !important;
+        display: flex !important;
+        align-items: center !important;
+    }
     div[data-testid="stMetric"] [data-testid="stMetricDelta"] * {
         font-weight: 600 !important;
-        font-size: 0.88rem !important;
+        font-size: 0.85rem !important;
+        line-height: 1.2 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -129,15 +158,39 @@ int4_size = PTQEngine.compute_model_size_mb(quant_int4)
 # Top Metrics Row
 col1, col2, col3, col4 = st.columns(4)
 with col1:
-    st.metric("Teacher Model Size", f"{teacher_size['size_mb']:.2f} MB")
+    st.metric(
+        label="Teacher Model Size",
+        value=f"{teacher_size['size_mb']:.2f} MB",
+        delta="FP32 Reference",
+        delta_color="off"
+    )
 with col2:
-    st.metric("FP8 Model Size", f"{fp8_size['size_mb']:.2f} MB", delta=f"-{(1-fp8_size['size_mb']/teacher_size['size_mb'])*100:.1f}%")
+    fp8_pct = (1.0 - fp8_size['size_mb'] / teacher_size['size_mb']) * 100.0
+    st.metric(
+        label="FP8 Model Size",
+        value=f"{fp8_size['size_mb']:.2f} MB",
+        delta=f"-{fp8_pct:.1f}% RAM",
+        delta_color="normal"
+    )
 with col3:
-    st.metric("INT4 Model Size", f"{int4_size['size_mb']:.2f} MB", delta=f"-{(1-int4_size['size_mb']/teacher_size['size_mb'])*100:.1f}%")
+    int4_pct = (1.0 - int4_size['size_mb'] / teacher_size['size_mb']) * 100.0
+    st.metric(
+        label="INT4 Model Size",
+        value=f"{int4_size['size_mb']:.2f} MB",
+        delta=f"-{int4_pct:.1f}% RAM",
+        delta_color="normal"
+    )
 with col4:
     steps_count = 50 if ("50-Step" in pipeline_mode) else 4
     evals_count = 100 if "Standard CFG" in pipeline_mode else (50 if "Single Pass" in pipeline_mode else 4)
-    st.metric("Active Model Evaluations", f"{evals_count} passes", delta=f"{100/evals_count:.1f}x speedup" if evals_count < 100 else None)
+    speedup_delta = f"{100 / evals_count:.1f}x speedup" if evals_count < 100 else "1.0x Baseline"
+    delta_mode = "normal" if evals_count < 100 else "off"
+    st.metric(
+        label="Active Model Passes",
+        value=f"{evals_count} evals",
+        delta=speedup_delta,
+        delta_color=delta_mode
+    )
 
 st.markdown("---")
 
