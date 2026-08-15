@@ -25,8 +25,39 @@ st.set_page_config(page_title="FlowMatch-Compress Engine", layout="wide", page_i
 
 st.markdown("""
 <style>
-    .main { background-color: #0E1117; color: #FAFAFA; }
-    .stMetric { background-color: #1E222D; padding: 12px; border-radius: 8px; border-left: 4px solid #4DD0E1; }
+    /* Metric Card Styling */
+    div[data-testid="stMetric"] {
+        background-color: #f8fafc !important;
+        border: 1px solid #e2e8f0 !important;
+        padding: 14px 18px !important;
+        border-radius: 12px !important;
+        border-left: 5px solid #0284c7 !important;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04) !important;
+    }
+    
+    /* Metric Label */
+    div[data-testid="stMetric"] label,
+    div[data-testid="stMetric"] [data-testid="stMetricLabel"],
+    div[data-testid="stMetric"] [data-testid="stMetricLabel"] * {
+        color: #475569 !important;
+        font-size: 0.90rem !important;
+        font-weight: 600 !important;
+    }
+    
+    /* Metric Value */
+    div[data-testid="stMetric"] [data-testid="stMetricValue"],
+    div[data-testid="stMetric"] [data-testid="stMetricValue"] * {
+        color: #0f172a !important;
+        font-size: 1.85rem !important;
+        font-weight: 700 !important;
+    }
+    
+    /* Metric Delta */
+    div[data-testid="stMetric"] [data-testid="stMetricDelta"],
+    div[data-testid="stMetric"] [data-testid="stMetricDelta"] * {
+        font-weight: 600 !important;
+        font-size: 0.88rem !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
