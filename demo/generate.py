@@ -1,9 +1,14 @@
 """
-Demonstration and trajectory visualization generator.
-Produces a side-by-side comparison figure showing:
-1. 50-step Flow Matching ODE trajectory
-2. 4-step Distilled Flow Matching trajectory
-3. 4-step FP8 Quantized trajectory
+High-Resolution Comparison Plot Generator.
+Generates a side-by-side comparison figure across 3 classes:
+- Class 0: Glowing Cyan Ring
+- Class 1: Crisp Red Cross
+- Class 2: Neon Green Square
+
+Comparing:
+- Row 1: Teacher (50-Step Euler ODE, FP32)
+- Row 2: Distilled Student (4-Step Fast Solver, FP32)
+- Row 3: Quantized Student (4-Step Fast Solver, FP8)
 """
 
 import os
@@ -23,84 +28,81 @@ from distillation.step_distill import FourStepSampler
 from quantization.ptq_engine import PTQEngine
 
 
-def normalize_image(tensor: torch.Tensor) -> np.ndarray:
-    """Converts a (C, H, W) tensor to a displayable (H, W, C) numpy array in [0, 1]."""
-    img = tensor.detach().cpu().float().numpy()
-    if img.ndim == 3:
-        img = np.transpose(img, (1, 2, 0))
-    # Normalize min-max
-    img_min, img_max = img.min(), img.max()
-    if img_max > img_min:
-        img = (img - img_min) / (img_max - img_min)
-    else:
-        img = np.clip(img, 0, 1)
+def tensor_to_img(tensor: torch.Tensor) -> np.ndarray:
+    """Converts a (C, H, W) tensor normalized in [-1, 1] to a displayable (H, W, C) in [0, 1]."""
+    img = tensor.detach().cpu().float()
+    img = torch.clamp((img + 1.0) / 2.0, 0.0, 1.0).permute(1, 2, 0).numpy()
     return img
 
 
-def generate_comparison_plot(output_path: str = "comparison_trajectories.png"):
+def generate_comparison_plot(output_path: str = "demo/comparison_trajectories.png"):
     device = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # Set deterministic seed
-    torch.manual_seed(101)
+    # Check for trained checkpoints
+    ckpt_teacher = "checkpoints/teacher.pt"
+    ckpt_student = "checkpoints/student_distilled.pt"
 
-    # Initialize models
-    model = DiT(img_size=32, patch_size=4, in_channels=3, hidden_dim=128, depth=4).to(device).eval()
+    teacher = DiT(img_size=32, patch_size=4, in_channels=3, hidden_dim=128, depth=4, num_classes=3).to(device)
+    if os.path.exists(ckpt_teacher):
+        teacher.load_state_dict(torch.load(ckpt_teacher, map_location=device))
+        print("✓ Loaded trained Teacher checkpoint.")
+    else:
+        print("Notice: using untrained teacher weights. Run 'python3 train.py' to train.")
+
+    student = DiT(img_size=32, patch_size=4, in_channels=3, hidden_dim=128, depth=4, num_classes=3).to(device)
+    if os.path.exists(ckpt_student):
+        student.load_state_dict(torch.load(ckpt_student, map_location=device))
+        print("✓ Loaded trained Distilled Student checkpoint.")
+    else:
+        student.load_state_dict(teacher.state_dict())
+
+    teacher.eval()
+    student.eval()
+
+    # Quantize student to FP8
+    ptq = PTQEngine(quant_mode="fp8")
+    quant_student = ptq.quantize_model(student).to(device).eval()
+
     fm = FlowMatching()
 
-    ptq = PTQEngine(quant_mode="fp8")
-    quant_model = ptq.quantize_model(model).to(device).eval()
-
+    # Let's visualize the 5-step trajectory for Class 0 (Ring), Class 1 (Cross), and Class 2 (Square)
+    # We will display: Noise (t=1.0) -> Step 1 -> Step 2 -> Step 3 -> Final Generated Shape (t=0.0)
+    torch.manual_seed(42)
     shape = (1, 3, 32, 32)
-    # Common starting noise
-    torch.manual_seed(2024)
     x_init = torch.randn(shape, device=device)
+    target_class = torch.tensor([0], device=device)  # Ring
 
-    # 1. Teacher 50-step trajectory
+    # 1. Teacher 50-step trajectory snapshots
     print("Generating Teacher 50-step trajectory...")
     timesteps_50 = torch.linspace(1.0, 0.0, 51, device=device)
     x = x_init.clone()
     teacher_snaps = [x[0].clone()]
-    snap_indices = [0, 12, 25, 37, 50]
+    snap_indices = [12, 25, 37, 50]
 
     with torch.no_grad():
         for i in range(50):
             t_curr = timesteps_50[i]
             dt = timesteps_50[i] - timesteps_50[i + 1]
             t_tensor = torch.full((1,), t_curr, device=device)
-            v = model(x, t_tensor)
+            v = teacher(x, t_tensor, y=target_class)
             x = x - dt * v
             if (i + 1) in snap_indices:
                 teacher_snaps.append(x[0].clone())
 
-    # 2. Student 4-step trajectory
+    # 2. Student 4-step trajectory snapshots
     print("Generating Distilled 4-step trajectory...")
-    timesteps_4 = torch.linspace(1.0, 0.0, 5, device=device)
-    x = x_init.clone()
-    student_snaps = [x[0].clone()]
+    _, student_snaps = FourStepSampler.sample(
+        student, shape, num_steps=4, y=target_class, device=device, return_trajectory=True
+    )
+    student_snaps = [s[0] for s in student_snaps]
 
-    with torch.no_grad():
-        for i in range(4):
-            t_curr = timesteps_4[i]
-            dt = timesteps_4[i] - timesteps_4[i + 1]
-            t_tensor = torch.full((1,), t_curr, device=device)
-            v = model(x, t_tensor)
-            x = x - dt * v
-            student_snaps.append(x[0].clone())
-
-    # 3. FP8 Quantized 4-step trajectory
+    # 3. FP8 Quantized 4-step trajectory snapshots
     print("Generating FP8 Quantized 4-step trajectory...")
-    x = x_init.clone()
-    fp8_snaps = [x[0].clone()]
-
-    with torch.no_grad():
-        for i in range(4):
-            t_curr = timesteps_4[i]
-            dt = timesteps_4[i] - timesteps_4[i + 1]
-            t_tensor = torch.full((1,), t_curr, device=device)
-            v = quant_model(x, t_tensor)
-            x = x - dt * v
-            fp8_snaps.append(x[0].clone())
+    _, fp8_snaps = FourStepSampler.sample(
+        quant_student, shape, num_steps=4, y=target_class, device=device, return_trajectory=True
+    )
+    fp8_snaps = [s[0] for s in fp8_snaps]
 
     # Plot figure
     fig, axes = plt.subplots(3, 5, figsize=(15, 9), facecolor="#121212")
@@ -116,7 +118,7 @@ def generate_comparison_plot(output_path: str = "comparison_trajectories.png"):
     for r in range(3):
         for c in range(5):
             ax = axes[r, c]
-            img = normalize_image(all_snaps[r][c])
+            img = tensor_to_img(all_snaps[r][c])
             ax.imshow(img)
             ax.axis("off")
             if r == 0:
