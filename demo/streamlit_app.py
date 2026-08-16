@@ -231,7 +231,11 @@ def render_tensor_to_rgb(tensor: torch.Tensor, use_vae: bool):
             return VAEEngine.latents_to_rgb(rgb)[0].permute(1, 2, 0).cpu().numpy()
     else:
         img = torch.clamp((tensor + 1.0) / 2.0, 0.0, 1.0).permute(1, 2, 0).cpu().numpy()
-        return img
+        # High-fidelity Lanczos upsampling from 32x32 to 256x256 for clean, crisp photographic presentation
+        from PIL import Image
+        pil_img = Image.fromarray((img * 255.0).astype(np.uint8))
+        pil_up = pil_img.resize((256, 256), Image.Resampling.LANCZOS)
+        return np.array(pil_up) / 255.0
 
 # Execution Button
 btn_label = "🚀 Run 256x256 Photorealistic Latent Flow Generation" if in_channels == 4 else "🚀 Run CIFAR-10 Photographic Flow Generation"
