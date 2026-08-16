@@ -7,7 +7,13 @@ and decode latents back to photorealistic RGB images.
 from typing import Optional, Tuple
 import torch
 import torch.nn as nn
-from diffusers import AutoencoderKL
+
+try:
+    from diffusers import AutoencoderKL
+    DIFFUSERS_AVAILABLE = True
+except ImportError:
+    AutoencoderKL = None
+    DIFFUSERS_AVAILABLE = False
 
 
 class VAEEngine(nn.Module):
@@ -20,6 +26,11 @@ class VAEEngine(nn.Module):
     def __init__(self, pretrained_model: str = "stabilityai/sd-vae-ft-mse", device: str = "cpu"):
         super().__init__()
         self.device = torch.device(device)
+        if not DIFFUSERS_AVAILABLE:
+            raise ImportError(
+                "The 'diffusers' library is required for high-resolution VAE decoding. "
+                "Please run: pip install diffusers"
+            )
         self.vae = AutoencoderKL.from_pretrained(pretrained_model, torch_dtype=torch.float32).to(self.device).eval()
         for p in self.vae.parameters():
             p.requires_grad = False

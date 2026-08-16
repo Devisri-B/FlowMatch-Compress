@@ -223,7 +223,7 @@ def render_tensor_to_rgb(tensor: torch.Tensor, use_vae: bool):
 
 # Execution Button
 btn_label = "🚀 Run 256x256 Photorealistic Latent Flow Generation" if in_channels == 4 else "🚀 Run CIFAR-10 Photographic Flow Generation"
-if st.button(btn_label, use_container_width=True):
+if st.button(btn_label, width="stretch"):
     torch.manual_seed(seed)
     shape = (1, in_channels, 32, 32)
     y_target = torch.tensor([class_id], device=device)
@@ -277,4 +277,4 @@ if st.button(btn_label, use_container_width=True):
         titles = ["1. Latent Noise (t=1.0)", "2. Coarse Scene (t=0.75)", "3. Structure (t=0.50)", "4. Refinement (t=0.25)", "5. Final Image (t=0.0)"]
         for idx in range(5):
             with t_cols[idx]:
-                st.image(render_tensor_to_rgb(snaps[idx][0], use_vae=(in_channels == 4)), caption=titles[idx], use_container_width=True)
+                st.image(render_tensor_to_rgb(snaps[idx][0], use_vae=(in_channels == 4)), caption=titles[idx], width="stretch")
