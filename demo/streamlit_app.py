@@ -152,15 +152,20 @@ if "Quantized" in pipeline_mode:
 cfg_scale = st.sidebar.slider("Classifier-Free Guidance (CFG) Scale", min_value=1.0, max_value=8.0, value=3.0, step=0.5)
 seed = st.sidebar.number_input("Random Seed", value=42)
 
+t_mtime = os.path.getmtime(ckpt_teacher) if os.path.exists(ckpt_teacher) else 0.0
+s_mtime = os.path.getmtime(ckpt_student) if os.path.exists(ckpt_student) else 0.0
+
 @st.cache_resource
-def load_models_and_vae(channels: int, classes: int, t_path: str, s_path: str):
+def load_fresh_models_and_vae(channels: int, classes: int, t_path: str, s_path: str, t_m: float, s_m: float):
     teacher = DiT(img_size=32, patch_size=4, in_channels=channels, hidden_dim=128, depth=4, num_classes=classes).to(device)
     student = DiT(img_size=32, patch_size=4, in_channels=channels, hidden_dim=128, depth=4, num_classes=classes).to(device)
 
     if os.path.exists(t_path):
         teacher.load_state_dict(torch.load(t_path, map_location=device))
+        print(f"✓ [Cache-Buster] Loaded fresh Teacher from {t_path} (mtime: {t_m})")
     if os.path.exists(s_path):
         student.load_state_dict(torch.load(s_path, map_location=device))
+        print(f"✓ [Cache-Buster] Loaded fresh Student from {s_path} (mtime: {s_m})")
     else:
         student.load_state_dict(teacher.state_dict())
 
@@ -177,7 +182,11 @@ def load_models_and_vae(channels: int, classes: int, t_path: str, s_path: str):
 
     return teacher, student, quant_fp8, quant_int4, vae
 
-teacher, student, quant_fp8, quant_int4, vae = load_models_and_vae(in_channels, num_classes, ckpt_teacher, ckpt_student)
+teacher, student, quant_fp8, quant_int4, vae = load_fresh_models_and_vae(in_channels, num_classes, ckpt_teacher, ckpt_student, t_mtime, s_mtime)
+
+if st.sidebar.button("🔄 Force Reload Checkpoints from Disk"):
+    st.cache_resource.clear()
+    st.rerun()
 fm = FlowMatching()
 
 # Calculate memory sizes
