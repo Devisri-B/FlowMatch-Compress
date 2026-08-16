@@ -1,3 +1,15 @@
+import os
+import warnings
+
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+warnings.filterwarnings("ignore")
+
+try:
+    import huggingface_hub
+    huggingface_hub.logging.set_verbosity_error()
+except Exception:
+    pass
+
 """
 Latent Autoencoder Engine for High-Resolution Latent Flow Matching.
 Wraps stabilityai/sd-vae-ft-mse to encode 256x256 RGB images into 4x32x32 continuous latents
