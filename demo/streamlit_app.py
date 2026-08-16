@@ -27,10 +27,22 @@ st.set_page_config(page_title="FlowMatch-Compress Engine", layout="wide", page_i
 
 st.markdown("""
 <style>
-    /* Ensure all column metric containers stretch equally */
+    /* Ensure all column containers respect boundary widths */
     div[data-testid="column"] {
         display: flex !important;
         flex-direction: column !important;
+        min-width: 0 !important;
+    }
+    
+    /* Ensure all images stay strictly within their columns without overflow */
+    div[data-testid="stImage"] {
+        max-width: 100% !important;
+    }
+    div[data-testid="stImage"] img {
+        max-width: 100% !important;
+        height: auto !important;
+        border-radius: 12px !important;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08) !important;
     }
     
     /* Uniform Metric Card Sizing */
@@ -254,21 +266,24 @@ if st.button(btn_label, width="stretch"):
     st.subheader(f"Generated Visual Output: {class_choice}")
     img_display = render_tensor_to_rgb(out[0], use_vae=(in_channels == 4))
 
-    col_res, col_chart = st.columns([1, 2])
+    col_res, col_chart = st.columns([1, 1], gap="large")
     with col_res:
-        img_width = 320 if in_channels == 4 else 260
-        st.image(img_display, caption=f"Generated {class_choice.split('(')[0].strip()}", width=img_width)
+        st.image(img_display, caption=f"Generated {class_choice.split('(')[0].strip()}", width="stretch")
     with col_chart:
         st.markdown(f"""
-        ### Performance Breakdown
-        - **Generative Paradigm**: `{dataset_mode}`
-        - **Subject / Class**: `{class_choice}`
-        - **Pipeline Mode**: `{pipeline_mode}`
-        - **ODE Steps Executed**: `{steps_count}`
-        - **Forward Passes**: `{evals_count}`
-        - **Measured Latency**: `{elapsed_ms:.1f} ms`
-        - **Efficiency**: Running at **{100 / evals_count:.1f}x fewer compute evaluations** than standard 50-step CFG!
-        """)
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 22px 26px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+            <h3 style="margin-top: 0; color: #0f172a; font-size: 1.25rem; font-weight: 700; border-bottom: 2px solid #0284c7; padding-bottom: 8px;">📊 Performance Breakdown</h3>
+            <ul style="list-style: none; padding-left: 0; margin-bottom: 0; line-height: 1.9; color: #334155; font-size: 0.95rem;">
+                <li><strong style="color: #0f172a;">Generative Paradigm:</strong> <code style="background: #e0f2fe; color: #0369a1; padding: 2px 6px; border-radius: 4px;">{dataset_mode}</code></li>
+                <li><strong style="color: #0f172a;">Subject / Class:</strong> <code style="background: #f1f5f9; color: #334155; padding: 2px 6px; border-radius: 4px;">{class_choice}</code></li>
+                <li><strong style="color: #0f172a;">Pipeline Mode:</strong> <code style="background: #f1f5f9; color: #334155; padding: 2px 6px; border-radius: 4px;">{pipeline_mode}</code></li>
+                <li><strong style="color: #0f172a;">ODE Steps Executed:</strong> <span style="font-weight: 600; color: #0284c7;">{steps_count}</span></li>
+                <li><strong style="color: #0f172a;">Forward Passes:</strong> <span style="font-weight: 600; color: #0284c7;">{evals_count}</span></li>
+                <li><strong style="color: #0f172a;">Measured Latency:</strong> <span style="font-weight: 700; color: #16a34a;">{elapsed_ms:.1f} ms</span></li>
+                <li style="margin-top: 8px; padding-top: 10px; border-top: 1px dashed #cbd5e1;"><strong style="color: #0f172a;">Efficiency Gain:</strong> Running at <span style="color: #0284c7; font-weight: 700;">{100 / evals_count:.1f}x fewer compute evaluations</span> than standard 50-step CFG!</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
 
     # Trajectory Progression Row
     if len(snaps) >= 5:
