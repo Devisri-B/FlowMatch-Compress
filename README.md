@@ -45,7 +45,7 @@
 
 ---
 
-## 🔬 Mathematical Formulation
+## Mathematical Formulation
 
 ### 1. Optimal Transport Flow Matching (OT-CFM)
 
@@ -109,7 +109,7 @@ Matching the endpoints eliminates discretization error while reducing total infe
 
 ---
 
-## 🛠 Project Structure
+## Project Structure
 
 ```
 flowmatch-compress/
@@ -145,7 +145,7 @@ flowmatch-compress/
 
 ---
 
-## 💻 Quickstart
+## Quickstart
 
 ### 1. Installation
 ```bash
