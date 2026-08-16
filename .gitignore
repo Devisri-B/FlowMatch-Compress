@@ -15,3 +15,6 @@ htmlcov/
 .idea/
 *.swp
 *.swo
+# Datasets
+data/
+*.tar.gz

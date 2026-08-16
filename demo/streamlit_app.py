@@ -1,6 +1,6 @@
 """
 Interactive Streamlit Application for FlowMatch-Compress.
-Visualizes step-by-step generative denoising, CFG distillation speedups, and quantization savings.
+Visualizes Real-World Latent Flow Matching and CIFAR-10 photographic generation.
 """
 
 import os
@@ -16,6 +16,8 @@ import numpy as np
 
 from models.dit import DiT
 from core.flow_matching import FlowMatching
+from core.vae_engine import VAEEngine
+from core.dataset import CIFAR10_CLASSES
 from distillation.cfg_distill import CFGDistiller
 from distillation.step_distill import FourStepSampler
 from quantization.ptq_engine import PTQEngine
@@ -91,18 +93,35 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("⚡ FlowMatch-Compress")
-st.subheader("Flow Matching DiT with Step/CFG Distillation & FP8/INT4 Quantization")
+st.subheader("Real-World Latent Flow Matching DiT with Step/CFG Distillation & FP8/INT4 Quantization")
 
 # Sidebar Controls
 st.sidebar.header("Generation Settings")
 device = "mps" if torch.backends.mps.is_available() else ("cuda" if torch.cuda.is_available() else "cpu")
 st.sidebar.info(f"Hardware Acceleration: **{device.upper()}**")
 
-class_choice = st.sidebar.selectbox(
-    "Target Shape (Class Conditioning)",
-    ["Glowing Cyan Ring (Class 0)", "Crisp Red Cross (Class 1)", "Neon Green Square (Class 2)"]
+dataset_mode = st.sidebar.radio(
+    "Generative Paradigm",
+    ["High-Resolution Latent Flow Matching (256x256)", "CIFAR-10 Photographic Benchmark (32x32)"]
 )
-class_id = int(class_choice.split("Class ")[1].replace(")", ""))
+
+if "High-Resolution" in dataset_mode:
+    class_choice = st.sidebar.selectbox(
+        "Photorealistic Subject",
+        ["Sports Car on Highway 🏎️ (Class 0)", "Mountain Valley Lake 🏔️ (Class 1)", "Golden Retriever Dog 🐕 (Class 2)"]
+    )
+    class_id = int(class_choice.split("Class ")[1].replace(")", ""))
+    in_channels = 4
+    ckpt_teacher = "checkpoints/teacher_latent_hires.pt"
+    ckpt_student = "checkpoints/student_distilled_latent_hires.pt"
+    num_classes = 3
+else:
+    class_choice = st.sidebar.selectbox("CIFAR-10 Class", [f"{c} (Class {i})" for i, c in enumerate(CIFAR10_CLASSES)])
+    class_id = int(class_choice.split("Class ")[1].replace(")", ""))
+    in_channels = 3
+    ckpt_teacher = "checkpoints/teacher_cifar10.pt"
+    ckpt_student = "checkpoints/student_distilled_cifar10.pt"
+    num_classes = 10
 
 pipeline_mode = st.sidebar.selectbox(
     "Pipeline Stage",
@@ -122,17 +141,14 @@ cfg_scale = st.sidebar.slider("Classifier-Free Guidance (CFG) Scale", min_value=
 seed = st.sidebar.number_input("Random Seed", value=42)
 
 @st.cache_resource
-def load_models():
-    teacher = DiT(img_size=32, patch_size=4, in_channels=3, hidden_dim=128, depth=4, num_classes=3).to(device)
-    student = DiT(img_size=32, patch_size=4, in_channels=3, hidden_dim=128, depth=4, num_classes=3).to(device)
+def load_models_and_vae(channels: int, classes: int, t_path: str, s_path: str):
+    teacher = DiT(img_size=32, patch_size=4, in_channels=channels, hidden_dim=128, depth=4, num_classes=classes).to(device)
+    student = DiT(img_size=32, patch_size=4, in_channels=channels, hidden_dim=128, depth=4, num_classes=classes).to(device)
 
-    ckpt_teacher = "checkpoints/teacher.pt"
-    ckpt_student = "checkpoints/student_distilled.pt"
-
-    if os.path.exists(ckpt_teacher):
-        teacher.load_state_dict(torch.load(ckpt_teacher, map_location=device))
-    if os.path.exists(ckpt_student):
-        student.load_state_dict(torch.load(ckpt_student, map_location=device))
+    if os.path.exists(t_path):
+        teacher.load_state_dict(torch.load(t_path, map_location=device))
+    if os.path.exists(s_path):
+        student.load_state_dict(torch.load(s_path, map_location=device))
     else:
         student.load_state_dict(teacher.state_dict())
 
@@ -145,9 +161,11 @@ def load_models():
     ptq_int4 = PTQEngine(quant_mode="int4")
     quant_int4 = ptq_int4.quantize_model(student).to(device).eval()
 
-    return teacher, student, quant_fp8, quant_int4
+    vae = VAEEngine(device=device) if channels == 4 else None
 
-teacher, student, quant_fp8, quant_int4 = load_models()
+    return teacher, student, quant_fp8, quant_int4, vae
+
+teacher, student, quant_fp8, quant_int4, vae = load_models_and_vae(in_channels, num_classes, ckpt_teacher, ckpt_student)
 fm = FlowMatching()
 
 # Calculate memory sizes
@@ -194,22 +212,26 @@ with col4:
 
 st.markdown("---")
 
-def tensor_to_display(t: torch.Tensor):
-    img = t.detach().cpu().float()
-    img = torch.clamp((img + 1.0) / 2.0, 0.0, 1.0).permute(1, 2, 0).numpy()
-    return img
+def render_tensor_to_rgb(tensor: torch.Tensor, use_vae: bool):
+    if use_vae and vae is not None:
+        with torch.no_grad():
+            rgb = vae.decode(tensor.unsqueeze(0))
+            return VAEEngine.latents_to_rgb(rgb)[0].permute(1, 2, 0).cpu().numpy()
+    else:
+        img = torch.clamp((tensor + 1.0) / 2.0, 0.0, 1.0).permute(1, 2, 0).cpu().numpy()
+        return img
 
 # Execution Button
-if st.button("🚀 Run Flow Generation", use_container_width=True):
+btn_label = "🚀 Run 256x256 Photorealistic Latent Flow Generation" if in_channels == 4 else "🚀 Run CIFAR-10 Photographic Flow Generation"
+if st.button(btn_label, use_container_width=True):
     torch.manual_seed(seed)
-    shape = (1, 3, 32, 32)
+    shape = (1, in_channels, 32, 32)
     y_target = torch.tensor([class_id], device=device)
     start_time = time.perf_counter()
 
     with st.spinner("Integrating ODE vector field..."):
         if "Standard CFG" in pipeline_mode:
             out, trajectory = fm.sample_euler(teacher, shape, steps=50, y=y_target, cfg_scale=cfg_scale, device=device, return_trajectory=True)
-            # Pick 5 evenly spaced snaps
             snaps = [trajectory[0], trajectory[12], trajectory[25], trajectory[37], trajectory[50]]
         elif "CFG-Distilled" in pipeline_mode:
             distiller = CFGDistiller(teacher, student)
@@ -226,19 +248,21 @@ if st.button("🚀 Run Flow Generation", use_container_width=True):
             snaps = trajectory
 
     elapsed_ms = (time.perf_counter() - start_time) * 1000.0
-    st.success(f"Generation completed in **{elapsed_ms:.1f} ms**!")
+    st.success(f"Generated successfully in **{elapsed_ms:.1f} ms**!")
 
     # Display results
     st.subheader(f"Generated Visual Output: {class_choice}")
-    img_display = tensor_to_display(out[0])
+    img_display = render_tensor_to_rgb(out[0], use_vae=(in_channels == 4))
 
     col_res, col_chart = st.columns([1, 2])
     with col_res:
-        st.image(img_display, caption=f"Generated {class_choice.split('(')[0].strip()}", width=260)
+        img_width = 320 if in_channels == 4 else 260
+        st.image(img_display, caption=f"Generated {class_choice.split('(')[0].strip()}", width=img_width)
     with col_chart:
         st.markdown(f"""
         ### Performance Breakdown
-        - **Target Object**: `{class_choice}`
+        - **Generative Paradigm**: `{dataset_mode}`
+        - **Subject / Class**: `{class_choice}`
         - **Pipeline Mode**: `{pipeline_mode}`
         - **ODE Steps Executed**: `{steps_count}`
         - **Forward Passes**: `{evals_count}`
@@ -250,7 +274,7 @@ if st.button("🚀 Run Flow Generation", use_container_width=True):
     if len(snaps) >= 5:
         st.subheader("Denoising Trajectory Progression (t = 1.0 → t = 0.0)")
         t_cols = st.columns(5)
-        titles = ["1. Noise (t=1.0)", "2. Coarse Flow (t=0.75)", "3. Intermediate (t=0.50)", "4. Refinement (t=0.25)", "5. Final Object (t=0.0)"]
+        titles = ["1. Latent Noise (t=1.0)", "2. Coarse Scene (t=0.75)", "3. Structure (t=0.50)", "4. Refinement (t=0.25)", "5. Final Image (t=0.0)"]
         for idx in range(5):
             with t_cols[idx]:
-                st.image(tensor_to_display(snaps[idx][0]), caption=titles[idx], use_container_width=True)
+                st.image(render_tensor_to_rgb(snaps[idx][0], use_vae=(in_channels == 4)), caption=titles[idx], use_container_width=True)

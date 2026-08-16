@@ -5,19 +5,29 @@
 [![Tests](https://img.shields.io/badge/Tests-Passing-brightgreen.svg)]()
 [![Quantization](https://img.shields.io/badge/PTQ-FP8%20%7C%20INT8%20%7C%20INT4-blue.svg)]()
 
-> **Production-grade Flow Matching (OT-CFM) Diffusion Transformer (DiT) engine featuring two-stage distillation (CFG + 4-step trajectory distillation) and post-training quantization (FP8 E4M3, INT8, and grouped INT4).**
+> **Production-grade Flow Matching (OT-CFM) Diffusion Transformer (DiT) engine featuring two-stage distillation (CFG + 4-step trajectory distillation), high-resolution photorealistic Latent Flow Matching with VAE decoding, CIFAR-10 photographic benchmarks, and post-training quantization (FP8 E4M3, INT8, and grouped INT4).**
 
 ---
 
 ## Key Highlights
 
 - **Clean Continuous-Time Flow Matching from Scratch**: Implemented Optimal Transport Conditional Flow Matching (OT-CFM / Rectified Flow) with linear interpolation paths $x_t = (1-t)x_0 + t x_1$ and analytical velocity targets $u_t = x_1 - x_0$.
+- **Real-World High-Resolution Latent Flow Matching ($256 \times 256$)**: Integrated `AutoencoderKL` (`stabilityai/sd-vae-ft-mse`) to compress images into $4 \times 32 \times 32$ continuous latent spaces for photorealistic real-world generation (automobiles, landscapes, animals).
+- **CIFAR-10 Photographic Benchmark**: Validated class-conditional generation across 50,000 real photographic training samples across 10 classes (Airplane, Automobile, Bird, Cat, etc.).
 - **Diffusion Transformer (DiT) with AdaLN-Zero**: Built patch-based ViT architecture featuring Adaptive Layer Normalization with zero-initialized modulation parameters for extreme training stability.
 - **Two-Stage Model Distillation**:
   - **CFG Distillation**: Eliminates dual-pass unconditional forward evaluations by training the student to predict guided vector fields directly conditioned on guidance scale $w$ (1.8x speedup).
   - **4-Step Trajectory Distillation**: Compresses 50-step Euler/Heun ODE integration into a fast 4-step solver ($12.5\times$ step reduction, 22x latency speedup).
 - **Post-Training Quantization (PTQ) Suite**: Custom engine supporting FP8 (E4M3/E5M2), per-channel symmetric INT8, and grouped INT4 quantization with activation calibration, achieving **up to 56% memory footprint reduction**.
 - **Interactive Visualizer & Benchmarks**: Real-time Streamlit dashboard and automated benchmark suite profiling latency, trajectory drift (MSE, PSNR), and VRAM footprint.
+
+---
+
+## Visual Denoising Trajectory (Photorealistic Latent Flow)
+
+![Trajectory Comparison](demo/comparison_trajectories.png)
+
+*Continuous-time Flow Matching trajectory in latent space decoded to 256x256 photorealistic images across 50-step Euler teacher, 4-step distilled student, and 4-step FP8 quantized student.*
 
 ---
 
@@ -99,25 +109,23 @@ Matching the endpoints eliminates discretization error while reducing total infe
 
 ---
 
-## 🖼 Visual Denoising Trajectory
-
-![Trajectory Comparison](demo/comparison_trajectories.png)
-
----
-
 ## 🛠 Project Structure
 
 ```
 flowmatch-compress/
 ├── checkpoints/             # Trained teacher and distilled student weights
-│   ├── teacher.pt
-│   └── student_distilled.pt
+│   ├── teacher_latent_hires.pt
+│   ├── student_distilled_latent_hires.pt
+│   ├── teacher_cifar10.pt
+│   └── student_distilled_cifar10.pt
 ├── models/
 │   ├── dit.py               # DiT backbone with AdaLN-Zero & Patchify
 │   └── embeddings.py        # Fourier Timestep, Class & Guidance embeddings
 ├── core/
 │   ├── flow_matching.py     # OT-CFM loss, Euler & Heun ODE integrators
-│   └── scheduler.py         # Linear, Cosine, and Shifted time schedules
+│   ├── scheduler.py         # Linear, Cosine, and Shifted time schedules
+│   ├── vae_engine.py        # VAE latent encoding & decoding (256x256 RGB)
+│   └── dataset.py           # CIFAR-10 real photographic dataloaders
 ├── distillation/
 │   ├── cfg_distill.py       # Single-pass CFG Distillation
 │   └── step_distill.py      # Progressive & 4-step trajectory distillation
@@ -159,7 +167,7 @@ python benchmarks/benchmark_latency.py
 ### 4. Generate Trajectory Visualization
 ```bash
 python demo/generate.py
-# Saves side-by-side comparison figure to demo/comparison_trajectories.png
+# Generates and saves 256x256 real-world trajectory comparison to demo/comparison_trajectories.png
 ```
 
 ### 5. Launch Interactive Web UI
